@@ -1,7 +1,11 @@
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
-      - master
+      - main
+      - wiblum/*
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -37,7 +41,7 @@ jobs:
       - name: Pull pip dependencies
         run: ./install-pythonpackages.sh
       - name: Install pyright
-        run: npm install -g pyright
+        run: npm install -g pyright@1.1.151
       - name: Pull typing stubs from cache
         uses: actions/cache@v2
         with:

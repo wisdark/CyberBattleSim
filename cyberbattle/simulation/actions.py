@@ -59,9 +59,19 @@ class Penalty:
     BLOCKED_BY_REMOTE_FIREWALL = -10
 
 
-# Reward for any successfully executed local or remote attack
-# (the attack cost gets substracted from this reward)
-SUCCEEDED_ATTACK_REWARD = 50
+# Reward for the first time a local or remote attack
+# gets successfully executed since the last time the target node was imaged.
+# NOTE: the attack cost gets substracted from this reward.
+NEW_SUCCESSFULL_ATTACK_REWARD = 7
+
+# Fixed reward for discovering a new node
+NODE_DISCOVERED_REWARD = 5
+
+# Fixed reward for discovering a new credential
+CREDENTIAL_DISCOVERED_REWARD = 3
+
+# Fixed reward for discovering a new node property
+PROPERTY_DISCOVERED_REWARD = 2
 
 
 class EdgeAnnotation(Enum):
@@ -78,8 +88,6 @@ class ActionResult(NamedTuple):
 
 
 ALGEBRA = boolean.BooleanAlgebra()
-ALGEBRA.TRUE.dual = type(ALGEBRA.FALSE)
-ALGEBRA.FALSE.dual = type(ALGEBRA.TRUE)
 
 
 @dataclass
@@ -128,12 +136,11 @@ class AgentActions:
         node_flags = node.properties
         expr = vulnerability.precondition.expression
 
-        # this line seems redundant but it is necessary to declare the symbols used in the mapping
-        # pylint: disable=unused-variable
-
-        mapping = {i: ALGEBRA.TRUE if str(i) in node_flags else ALGEBRA.FALSE
+        true_value = ALGEBRA.parse('true')
+        false_value = ALGEBRA.parse('false')
+        mapping = {i: true_value if str(i) in node_flags else false_value
                    for i in expr.get_symbols()}
-        is_true: bool = cast(boolean.Expression, expr.subs(mapping)).simplify() == ALGEBRA.TRUE
+        is_true: bool = cast(boolean.Expression, expr.subs(mapping)).simplify() == true_value
         return is_true
 
     def list_vulnerabilities_in_target(
@@ -177,7 +184,7 @@ class AgentActions:
             if 'kind' in edge_annotation:
                 new_annotation = EdgeAnnotation(max(edge_annotation['kind'].value, new_annotation.value))
             else:
-                new_annotation = new_annotation.value
+                new_annotation = EdgeAnnotation(new_annotation.value)
         self._environment.network.add_edge(source_node_id, target_node_id, kind=new_annotation, kind_as_float=float(new_annotation.value))
 
     def get_discovered_properties(self, node_id: model.NodeID) -> Set[int]:
@@ -185,8 +192,10 @@ class AgentActions:
 
     def __mark_node_as_discovered(self, node_id: model.NodeID) -> None:
         logger.info('discovered node: ' + node_id)
-        if node_id not in self._discovered_nodes:
+        newly_discovered = node_id not in self._discovered_nodes
+        if newly_discovered:
             self._discovered_nodes[node_id] = NodeTrackingInformation()
+        newly_discovered
 
     def __mark_nodeproperties_as_discovered(self, node_id: model.NodeID, properties: List[PropertyName]):
         properties_indices = [self._environment.identifiers.properties.index(p)
@@ -194,13 +203,18 @@ class AgentActions:
                               if p not in self.privilege_tags]
 
         if node_id in self._discovered_nodes:
+            before_count = len(self._discovered_nodes[node_id].discovered_properties)
             self._discovered_nodes[node_id].discovered_properties = self._discovered_nodes[node_id].discovered_properties.union(properties_indices)
         else:
+            before_count = 0
             self._discovered_nodes[node_id] = NodeTrackingInformation(discovered_properties=set(properties_indices))
+
+        newly_discovered_properties = len(self._discovered_nodes[node_id].discovered_properties) - before_count
+        return newly_discovered_properties
 
     def __mark_allnodeproperties_as_discovered(self, node_id: model.NodeID):
         node_info: model.NodeInfo = self._environment.network.nodes[node_id]['data']
-        self.__mark_nodeproperties_as_discovered(node_id, node_info.properties)
+        return self.__mark_nodeproperties_as_discovered(node_id, node_info.properties)
 
     def __mark_node_as_owned(self,
                              node_id: model.NodeID,
@@ -214,18 +228,35 @@ class AgentActions:
 
         self.__mark_allnodeproperties_as_discovered(node_id)
 
-    def __mark_discovered_entities(self, reference_node: model.NodeID, outcome: model.VulnerabilityOutcome) -> None:
+    def __mark_discovered_entities(self, reference_node: model.NodeID, outcome: model.VulnerabilityOutcome) -> Tuple[int, float, int]:
+        """Mark discovered entities as such and return
+        the number of newly discovered nodes, their total value and the number of newly discovered credentials"""
+        newly_discovered_nodes = 0
+        newly_discovered_nodes_value = 0
+        newly_discovered_credentials = 0
+
         if isinstance(outcome, model.LeakedCredentials):
             for credential in outcome.credentials:
-                self.__mark_node_as_discovered(credential.node)
-                self._gathered_credentials.add(credential.credential)
+                if self.__mark_node_as_discovered(credential.node):
+                    newly_discovered_nodes += 1
+                    newly_discovered_nodes_value += self._environment.get_node(credential.node).value
+
+                if credential.credential not in self._gathered_credentials:
+                    newly_discovered_credentials += 1
+                    self._gathered_credentials.add(credential.credential)
+
                 logger.info('discovered credential: ' + str(credential))
                 self.__annotate_edge(reference_node, credential.node, EdgeAnnotation.KNOWS)
 
         elif isinstance(outcome, model.LeakedNodesId):
             for node_id in outcome.nodes:
-                self.__mark_node_as_discovered(node_id)
+                if self.__mark_node_as_discovered(node_id):
+                    newly_discovered_nodes += 1
+                    newly_discovered_nodes_value += self._environment.get_node(node_id).value
+
                 self.__annotate_edge(reference_node, node_id, EdgeAnnotation.KNOWS)
+
+        return newly_discovered_nodes, newly_discovered_nodes_value, newly_discovered_credentials
 
     def get_node_privilegelevel(self, node_id: model.NodeID) -> model.PrivilegeLevel:
         """Return the last recorded privilege level of the specified node"""
@@ -280,6 +311,8 @@ class AgentActions:
         if not self._check_prerequisites(node_id, vulnerability):
             return False, ActionResult(reward=failed_penalty, outcome=model.ExploitFailed())
 
+        reward = 0
+
         # if the vulnerability type is a privilege escalation
         # and if the escalation level is not already reached on that node,
         # then add the escalation tag to the node properties
@@ -296,7 +329,8 @@ class AgentActions:
                 assert p in node_info.properties, \
                     f'Discovered property {p} must belong to the set of properties associated with the node.'
 
-            self.__mark_nodeproperties_as_discovered(node_id, outcome.discovered_properties)
+            newly_discovered_properties = self.__mark_nodeproperties_as_discovered(node_id, outcome.discovered_properties)
+            reward += newly_discovered_properties * PROPERTY_DISCOVERED_REWARD
 
         if node_id not in self._discovered_nodes:
             self._discovered_nodes[node_id] = NodeTrackingInformation()
@@ -308,14 +342,22 @@ class AgentActions:
         if already_executed:
             last_time = self._discovered_nodes[node_id].last_attack[lookup_key]
             if node_info.last_reimaging is None or last_time >= node_info.last_reimaging:
-                return False, ActionResult(reward=Penalty.REPEAT, outcome=outcome)
+                reward += Penalty.REPEAT
+        else:
+            reward += NEW_SUCCESSFULL_ATTACK_REWARD
 
         self._discovered_nodes[node_id].last_attack[lookup_key] = time()
 
-        self.__mark_discovered_entities(node_id, outcome)
+        newly_discovered_nodes, discovered_nodes_value, newly_discovered_credentials = self.__mark_discovered_entities(node_id, outcome)
+
+        reward += discovered_nodes_value
+        reward += newly_discovered_nodes * NODE_DISCOVERED_REWARD
+        reward += newly_discovered_credentials * CREDENTIAL_DISCOVERED_REWARD
+
+        reward -= vulnerability.cost
+
         logger.info("GOT REWARD: " + vulnerability.reward_string)
-        return True, ActionResult(reward=0.0 if already_executed else SUCCEEDED_ATTACK_REWARD - vulnerability.cost,
-                                  outcome=vulnerability.outcome)
+        return True, ActionResult(reward=reward, outcome=outcome)
 
     def exploit_remote_vulnerability(self,
                                      node_id: model.NodeID,

@@ -136,7 +136,8 @@ def epsilon_greedy_search(
     epsilon_exponential_decay: Optional[int] = None,
     render=True,
     render_last_episode_rewards_to: Optional[str] = None,
-    verbosity: Verbosity = Verbosity.Normal
+    verbosity: Verbosity = Verbosity.Normal,
+    plot_episodes_length=True
 ) -> TrainedLearner:
     """Epsilon greedy search for CyberBattle gym environments
 
@@ -171,6 +172,9 @@ def epsilon_greedy_search(
     with an index appended to it each time there is a positive reward
     for the last episode only
 
+    - plot_episodes_length -- Plot the graph showing total number of steps by episode
+    at th end of the search.
+
     Note on convergence
     ===================
 
@@ -198,7 +202,7 @@ def epsilon_greedy_search(
     all_episodes_availability = []
 
     wrapped_env = AgentWrapper(cyberbattle_gym_env,
-                               ActionTrackingStateAugmentation(environment_properties))
+                               ActionTrackingStateAugmentation(environment_properties, cyberbattle_gym_env.reset()))
     steps_done = 0
     plot_title = f"{title} (epochs={episode_count}, ϵ={initial_epsilon}, ϵ_min={epsilon_minimum}," \
         + (f"ϵ_multdecay={epsilon_multdecay}," if epsilon_multdecay else '') \
@@ -238,6 +242,8 @@ def epsilon_greedy_search(
                 progressbar.Counter(),
                 '|',
                 progressbar.Variable(name='reward', width=6, precision=10),
+                '|',
+                progressbar.Variable(name='last_reward_at', width=4),
                 '|',
                 progressbar.Timer(),
                 progressbar.Bar()
@@ -281,6 +287,8 @@ def epsilon_greedy_search(
             all_availability.append(info['network_availability'])
             total_reward += reward
             bar.update(t, reward=total_reward)
+            if reward > 0:
+                bar.update(t, last_reward_at=t)
 
             if verbosity == Verbosity.Verbose or (verbosity == Verbosity.Normal and reward > 0):
                 sign = ['-', '+'][reward > 0]
@@ -322,7 +330,8 @@ def epsilon_greedy_search(
 
         length = episode_ended_at if episode_ended_at else iteration_count
         learner.end_of_episode(i_episode=i_episode, t=length)
-        plottraining.episode_done(length)
+        if plot_episodes_length:
+            plottraining.episode_done(length)
         if render:
             wrapped_env.render()
 
@@ -331,7 +340,8 @@ def epsilon_greedy_search(
 
     wrapped_env.close()
     print("simulation ended")
-    plottraining.plot_end()
+    if plot_episodes_length:
+        plottraining.plot_end()
 
     return TrainedLearner(
         all_episodes_rewards=all_episodes_rewards,

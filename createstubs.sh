@@ -7,6 +7,8 @@ set -e
 
 . ./getpythonpath.sh
 
+pushd "$(dirname "$0")"
+
 echo "$(tput setaf 2)Creating type stubs$(tput sgr0)"
 createstub() {
     local name=$1
@@ -17,7 +19,6 @@ createstub() {
     fi
 }
 
-createstub networkx
 createstub pandas
 createstub plotly
 createstub progressbar
@@ -48,7 +49,11 @@ else
     echo stub 'boolean' already created
 fi
 
+echo 'Typing stub generation completed'
+
 # Stubs that needed manual patching and that
 # were instead checked-in in git
 #   pyright --createstub boolean
 #   pyright --createstub gym
+
+popd

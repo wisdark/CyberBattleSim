@@ -8,7 +8,7 @@ that were explored so far, and for each node where the attacker client
 is installed, execute actions on the machine.
 """
 import networkx as nx
-from typing import List, Optional, Dict, Union, Tuple
+from typing import List, Optional, Dict, Union, Tuple, Set
 import plotly.graph_objects as go
 
 from . import model, actions
@@ -22,7 +22,7 @@ class CommandControl:
     """
 
     # Global list aggregating all credentials gathered so far, from any node in the network
-    __gathered_credentials: List[model.CachedCredential] = []
+    __gathered_credentials: Set[model.CachedCredential]
     _actuator: actions.AgentActions
     __environment: model.Environment
     __total_reward: float
@@ -38,13 +38,13 @@ class CommandControl:
             raise ValueError(
                 "Invalid type: expecting Union[model.Environment, actions.AgentActions])")
 
-        self.__gathered_credentials = []
+        self.__gathered_credentials = set()
         self.__total_reward = 0
 
     def __save_credentials(self, outcome: model.VulnerabilityOutcome) -> None:
         """Save credentials obtained from exploiting a vulnerability"""
         if isinstance(outcome, model.LeakedCredentials):
-            self.__gathered_credentials.extend(outcome.credentials)
+            self.__gathered_credentials.update(outcome.credentials)
         return
 
     def __accumulate_reward(self, reward: actions.Reward) -> None:
@@ -139,7 +139,7 @@ class CommandControl:
         return result.outcome is not None
 
     @property
-    def credentials_gathered_so_far(self) -> List[model.CachedCredential]:
+    def credentials_gathered_so_far(self) -> Set[model.CachedCredential]:
         """Returns the list of credentials gathered so far by the
          attacker (from any node)"""
         return self.__gathered_credentials
@@ -175,6 +175,7 @@ class EnvironmentDebugging:
         known_nodes = [node_id for node_id, _ in self.__actuator.discovered_nodes()]
 
         subgraph = self.__environment.network.subgraph(known_nodes)
+
         # pos = nx.fruchterman_reingold_layout(subgraph)
         pos = nx.shell_layout(subgraph, [[known_nodes[0]], known_nodes[1:]])
 
@@ -212,7 +213,7 @@ class EnvironmentDebugging:
                                 standoff=10,
                                 align='center',
                                 opacity=1
-                            ) for (source, target) in subgraph.edges]
+                            ) for (source, target) in list(subgraph.edges)]
                             )
 
         owned_nodes_coordinates = [(i, c) for i, c in pos.items()

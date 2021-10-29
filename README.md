@@ -6,7 +6,7 @@ CyberBattleSim is an experimentation research platform to investigate the intera
 of automated agents operating in a simulated abstract enterprise network environment.
 The simulation provides a high-level abstraction of computer networks
 and cyber security concepts.
-Its Python-based Open AI Gym interface allows for training of
+Its Python-based Open AI Gym interface allows for the training of
 automated agents using reinforcement learning algorithms.
 
 The simulation environment is parameterized by a fixed network topology
@@ -27,7 +27,7 @@ attain their goal and the cumulative rewards over simulation steps across traini
 
 ## Project goals
 
-We view this project as an experimentation platform to conduct research on the interaction of automated agents in abstract simulated network environments. By open sourcing it we hope to encourage the research community to investigate how cyber-agents interact and evolve in such network environments.
+We view this project as an experimentation platform to conduct research on the interaction of automated agents in abstract simulated network environments. By open-sourcing it, we hope to encourage the research community to investigate how cyber-agents interact and evolve in such network environments.
 
 The simulation we provide is admittedly simplistic, but this has advantages. Its highly abstract nature prohibits direct application to real-world systems thus providing a safeguard against potential nefarious use of automated agents trained with it.
 At the same time, its simplicity allows us to focus on specific security aspects we aim to study and quickly experiment with recent machine learning and AI algorithms.
@@ -36,7 +36,7 @@ For instance, the current implementation focuses on
 the lateral movement cyber-attacks techniques, with the hope of understanding how network topology and configuration affects them. With this goal in mind, we felt that modeling actual network traffic was not necessary. This is just one example of a significant limitation in our system that future contributions might want to address.
 
 On the algorithmic side, we provide some basic agents as starting points, but we
-would be curious to find out how state-of-the art reinforcement learning algorithms compare to them. We found that the large action space
+would be curious to find out how state-of-the-art reinforcement learning algorithms compare to them. We found that the large action space
 intrinsic to any computer system is a particular challenge for
 Reinforcement Learning, in contrast to other applications such as video games or robot control. Training agents that can store and retrieve credentials is another challenge faced when applying RL techniques
 where agents typically do not feature internal memory.
@@ -45,7 +45,6 @@ These are other areas of research where the simulation could be used for benchma
 Other areas of interest include the responsible and ethical use of autonomous
 cyber-security systems: How to design an enterprise network that gives an intrinsic
 advantage to defender agents? How to conduct safe research aimed at defending enterprises against autonomous cyber-attacks while preventing nefarious use of such technology?
-
 
 ## Documentation
 
@@ -62,7 +61,6 @@ Read the [Quick introduction](/docs/quickintro.md) to the project.
 
 See [Benchmark](/docs/benchmark.md).
 
-
 ## Setting up a dev environment
 
 It is strongly recommended to work under a Linux environment, either directly or via WSL on Windows.
@@ -78,17 +76,17 @@ Start by checking out the repository:
 
 The instructions were tested on a Linux Ubuntu distribution (both native and via WSL). Run the following command to set-up your dev environment and install all the required dependencies (apt and pip packages):
 
-
 ```bash
 ./init.sh
 ```
 
-The script installs python3.8 if not present. If you are running a version of Ubuntu older than 20 it will automatically add an additional apt repository to install python3.8.
+The script installs python3.8 if not present. If you are running a version of Ubuntu older than 20, it will automatically add an additional apt repository to install python3.8.
 
 The script will create a [virtual Python environment](https://docs.python.org/3/library/venv.html) under a `venv` subdirectory, you can then
 run Python with `venv/bin/python`.
 
-> Note: If you prefer Python from a global installation instead of a virtual environment then you can skip the creation of the virtual envrionment by running the script with `./init.sh -n`. This will instead install all the Python packages on a system-wide installation of Python 3.8.
+> Note: If you prefer Python from a global installation instead of a virtual environment then you can skip the creation of the virtual environment by running the script with `./init.sh -n`. This will instead install all the Python packages on a system-wide installation of Python 3.8.
+
 #### Windows Subsystem for Linux
 
 The supported dev environment on Windows is via WSL.
@@ -97,9 +95,9 @@ and then proceed with the Linux instructions (next section).
 
 #### Git authentication from WSL
 
-To authenticate with Git you can either use SSH-based authentication, or
+To authenticate with Git, you can either use SSH-based authentication or
 alternatively use the credential-helper trick to automatically generate a
-PAT token. The latter can be done by running the following commmand under WSL
+PAT token. The latter can be done by running the following command under WSL
 ([more info here](https://docs.microsoft.com/en-us/windows/wsl/tutorials/wsl-git)):
 
 ```ps
@@ -111,25 +109,25 @@ git config --global credential.helper "/mnt/c/Program\ Files/Git/mingw64/libexec
 To run your environment within a docker container, we recommend running `docker` via Windows Subsystem on Linux (WSL) using the following instructions:
 [Installing Docker on Windows under WSL](https://docs.docker.com/docker-for-windows/wsl-tech-preview/)).
 
-
 ### Windows (unsupported)
 
 This method is not maintained anymore, please prefer instead running under
 a WSL subsystem Linux environment.
 But if you insist you want to start by installing [Python 3.8](https://www.python.org/downloads/windows/) then in a Powershell prompt run the `./init.ps1` script.
 
-
 ## Getting started quickly using Docker
-
 
 The quickest method to get up and running is via the Docker container.
 
 > NOTE: For licensing reasons, we do not publicly redistribute any
-> build artifact. In particular the docker registry `spinshot.azurecr.io` referred to
+> build artifact. In particular, the docker registry `spinshot.azurecr.io` referred to
 > in the commands below is kept private to the
 > project maintainers only.
 >
 > As a workaround, you can recreate the docker image yourself using the provided `Dockerfile`, publish the resulting image to your own docker registry and replace the registry name in the commands below.
+
+### Running from Docker registry
+
 ```bash
 commit=7c1f8c80bc53353937e3c69b0f5f799ebb2b03ee
 docker login spinshot.azurecr.io
@@ -137,11 +135,18 @@ docker pull spinshot.azurecr.io/cyberbattle:$commit
 docker run -it spinshot.azurecr.io/cyberbattle:$commit cyberbattle/agents/baseline/run.py
 ```
 
+### Recreating the Docker image
+
+```bash
+docker build -t cyberbattle:1.1 .
+docker run -it -v "$(pwd)":/source --rm cyberbattle:1.1 cyberbattle/agents/baseline/run.py
+```
+
 ## Check your environment
 
 Run the following command to run a simulation with a baseline RL agent:
 
-```
+```bash
 python cyberbattle/agents/baseline/run.py --training_episode_count 1 --eval_episode_count 1 --iteration_count 10 --rewardplot_with 80  --chain_size=20 --ownership_goal 1.0
 ```
 
@@ -178,8 +183,7 @@ Cumulative rewards -- DQN=Red, Random=Green
 
 ## Jupyter notebooks
 
-To quickly get familiar with the project you can open one the
-the provided Juptyer notebooks to play interactively with
+To quickly get familiar with the project, you can open one of the provided Jupyter notebooks to play interactively with
 the gym environments. Just start jupyter with `jupyter notebook`, or
 `venv/bin/jupyter notebook` if you are using a virtual environment setup.
 
@@ -195,24 +199,26 @@ the gym environments. Just start jupyter with `jupyter notebook`, or
   - [Interactive session with a randomly generated environment](notebooks/randomnetwork.ipynb)
   - [Random agent playing on randomly generated networks](notebooks/c2_interactive_interface.ipynb)
 
-The following `.py` notebooks are best viewed in VSCode or in Jupyter with the [Jupytext extension](https://jupytext.readthedocs.io/en/latest/install.html)
-and can easily be converted to `.ipynb` format if needed:
+- Benchmarks:
 
-  - Chain environments benchmarks:
+  The following notebooks show benchmark evaluation of the baseline agents on various environments.
 
-      - [Benchmark of all baseline agents](cyberbattle/agents/baseline/notebooks/notebook_all_agents_benchmark.py)
-      - [All baseline agents against a basic defender](cyberbattle/agents/baseline/notebooks/notebook_withdefender.py)
-      - [DeepQL](cyberbattle/agents/baseline/notebooks/notebook_dql.py)
-      - [Epsilon greedy](cyberbattle/agents/baseline/notebooks/notebook_randlookups.py)
-      - [Tabular Q Learning](cyberbattle/agents/baseline/notebooks/notebook_tabularq.py)
+  > The source `.py`-versions of the notebooks are best viewed in VSCode or in Jupyter with the [Jupytext extension](https://jupytext.readthedocs.io/en/latest/install.html).
+  The `notebooks` folder contains the corresponding `.ipynb`-notebooks
+  with the entire output and plots. These can be regenerated via [papermill](https://pypi.org/project/papermill/) using this [bash script](cyberbattle/agents/baseline/notebooks/runall.sh)
+  .
 
-  - Capture the Flag benchmark:
-    - [DeepQL](cyberbattle/agents/baseline/notebooks/notebook_ctf_dql.py)
+    - Benchmarking on a given environment: [source](cyberbattle/agents/baseline/notebooks/notebook_benchmark.py): [output (Chain)](notebooks/notebook_benchmark-chain.ipynb), [output (Capture the flag)](notebooks/notebook_benchmark-toyctf.ipynb)
+    - Benchmark on chain environments with a basic defender: [source](cyberbattle/agents/baseline/notebooks/notebook_withdefender.py),
+    [output](notebooks/notebook_withdefender.ipynb);
+    - DQL transfer learning evaluation: [source](cyberbattle/agents/baseline/notebooks/notebook_dql_transfer.py), [output](notebooks/notebook_dql_transfer.ipynb);
+    - Epsilon greedy with credential lookups: [source](cyberbattle/agents/baseline/notebooks/notebook_randlookups.py), [output](notebooks/notebook_randlookups.ipynb);
+    - Tabular Q Learning: [source](cyberbattle/agents/baseline/notebooks/notebook_tabularq.py); [output](notebooks/notebook_tabularq.ipynb)
 
 ## How to instantiate the Gym environments?
 
-The following code shows how to create an instance of the the OpenAI Gym environment `CyberBattleChain-v0`, an environment based on a [chain-like network structure](cyberbattle/samples/chainpattern/chainpattern.py), with 10 nodes (`size=10`) where the agent's goal is to either gain full ownership of the network (`own_atleast_percent=1.0`) or
-break the 80% network availability SLA (`maintain_sla=0.80`), while the netowrk is being monitored and protected by basic probalistically-modelled defender (`defender_agent=ScanAndReimageCompromisedMachines`):
+The following code shows how to create an instance of the OpenAI Gym environment `CyberBattleChain-v0`, an environment based on a [chain-like network structure](cyberbattle/samples/chainpattern/chainpattern.py), with 10 nodes (`size=10`) where the agent's goal is to either gain full ownership of the network (`own_atleast_percent=1.0`) or
+break the 80% network availability SLA (`maintain_sla=0.80`), while the network is being monitored and protected by the basic probalistically-modelled defender (`defender_agent=ScanAndReimageCompromisedMachines`):
 
 ```python
 import cyberbattle._env.cyberbattle_env
@@ -249,7 +255,6 @@ This project has adopted the [Microsoft Open Source Code of Conduct](https://ope
 For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or
 contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
 
-
 ### Ideas for contributions
 
 Here are some ideas on how to contribute: enhance the simulation (event-based, refined the simulation, …), train an RL algorithm on the existing simulation,
@@ -271,11 +276,11 @@ See also the [wiki for more ideas](https://github.com/microsoft/CyberBattleGym/w
 ```
 
 ## Note on privacy
+
 This project does not include any customer data.
 The provided models and network topologies are purely fictitious.
 Users of the provided code provide all the input to the simulation
 and must have the necessary permissions to use any provided data.
-
 
 ## Trademarks
 

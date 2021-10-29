@@ -38,11 +38,6 @@ import random
 VERSION_TAG = "0.1.0"
 
 ALGEBRA = boolean.BooleanAlgebra()
-# These two lines define True as the dual of False and vice versa
-# it's necessary in order to make sure the simplify function in boolean.py
-# works correctly. See https://github.com/bastikr/boolean.py/issues/82
-ALGEBRA.TRUE.dual = type(ALGEBRA.FALSE)
-ALGEBRA.FALSE.dual = type(ALGEBRA.TRUE)
 
 # Type alias for identifiers
 NodeID = str
@@ -350,7 +345,7 @@ def iterate_network_nodes(network: nx.graph.Graph) -> Iterator[Tuple[NodeID, Nod
 
 class Environment(NamedTuple):
     """ The static graph defining the network of computers """
-    network: nx.graph.Graph
+    network: nx.DiGraph
     vulnerability_library: VulnerabilityLibrary
     identifiers: Identifiers
     creationTime: datetime = datetime.utcnow()
@@ -480,9 +475,9 @@ SAMPLE_IDENTIFIERS = Identifiers(
 
 
 def assign_random_labels(
-        graph: nx.Graph,
+        graph: nx.DiGraph,
         vulnerabilities: VulnerabilityLibrary = dict([]),
-        identifiers: Identifiers = SAMPLE_IDENTIFIERS) -> nx.Graph:
+        identifiers: Identifiers = SAMPLE_IDENTIFIERS) -> nx.DiGraph:
     """Create an envrionment network by randomly assigning node information
     (properties, firewall configuration, vulnerabilities)
     to the nodes of a given graph structure"""
@@ -496,13 +491,13 @@ def assign_random_labels(
                 FirewallRule(port=p, permission=RulePermission.ALLOW)
                 for p in
                 random.sample(
-                    identifiers.properties,
-                    k=random.randint(0, len(identifiers.properties)))],
+                    identifiers.ports,
+                    k=random.randint(0, len(identifiers.ports)))],
             incoming=[
                 FirewallRule(port=p, permission=RulePermission.ALLOW)
                 for p in random.sample(
-                    identifiers.properties,
-                    k=random.randint(0, len(identifiers.properties)))])
+                    identifiers.ports,
+                    k=random.randint(0, len(identifiers.ports)))])
 
     def create_random_properties() -> List[PropertyName]:
         return list(random.sample(
