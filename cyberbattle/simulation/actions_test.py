@@ -7,7 +7,7 @@
 """
 import random
 from datetime import datetime
-from typing import Union, Dict, List
+from typing import Dict, List
 
 import pytest
 import networkx as nx
@@ -18,8 +18,7 @@ ADMINTAG = model.AdminEscalation().tag
 SYSTEMTAG = model.SystemEscalation().tag
 
 # pylint: disable=redefined-outer-name, protected-access
-# define fixtures as a type so mypy will shut up
-Fixture = Union[actions.AgentActions]
+Fixture = actions.AgentActions
 
 empty_vuln_dict: Dict[model.VulnerabilityID, model.VulnerabilityInfo] = {}
 SINGLE_VULNERABILITIES = {
@@ -277,7 +276,7 @@ def test_exploit_remote_vulnerability(actions_on_simple_environment: Fixture) ->
     # test a valid and functional one.
     result = actions_on_simple_environment.exploit_remote_vulnerability('a', 'c', "RDPBF")
     assert isinstance(result.outcome, model.LateralMove)
-    assert result.reward <= node.value - 1
+    assert result.reward < node.value
 
 
 def test_exploit_local_vulnerability(actions_on_simple_environment: Fixture) -> None:

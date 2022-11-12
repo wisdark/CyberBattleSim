@@ -5,7 +5,7 @@
 features extracted from the environment observations"""
 
 from cyberbattle._env.cyberbattle_env import EnvironmentBounds
-from typing import Optional, List
+from typing import Optional, List, Tuple
 import enum
 import numpy as np
 from gym import spaces, Wrapper
@@ -41,7 +41,7 @@ class Feature(spaces.MultiDiscrete):
         super().__init__(nvec)
 
     def flat_size(self):
-        return np.prod(self.nvec)
+        return np.prod(self.nvec, dtype=int)
 
     def name(self):
         """Return the name of the feature"""
@@ -69,9 +69,11 @@ class Feature_active_node_properties(Feature):
         node_prop = a.observation['discovered_nodes_properties']
 
         # list of all properties set/unset on the node
-        # Remap to get rid of unknown value 0: 1 -> 1, and -1 -> 0 (and 0-> 0)
         assert node < len(node_prop), f'invalid node index {node} (not discovered yet)'
-        remapped = np.array((1 + node_prop[node]) / 2, dtype=np.int)
+
+        # Remap to get rid of the unknown value (2):
+        #   1->1, 0->0, 2->0
+        remapped = np.array(node_prop[node] % 2, dtype=np.int_)
         return remapped
 
 
@@ -85,11 +87,11 @@ class Feature_active_node_age(Feature):
     def get(self, a: StateAugmentation, node) -> ndarray:
         assert node is not None, 'feature only valid in the context of a node'
 
-        discovered_node_count = len(a.observation['discovered_nodes_properties'])
+        discovered_node_count = a.observation['discovered_node_count']
 
         assert node < discovered_node_count, f'invalid node index {node} (not discovered yet)'
 
-        return np.array([discovered_node_count - node - 1], dtype=np.int)
+        return np.array([discovered_node_count - node - 1], dtype=np.int_)
 
 
 class Feature_active_node_id(Feature):
@@ -99,7 +101,7 @@ class Feature_active_node_id(Feature):
         super().__init__(p, [p.maximum_node_count] * 1)
 
     def get(self, a: StateAugmentation, node) -> ndarray:
-        return np.array([node], dtype=np.int)
+        return np.array([node], dtype=np.int_)
 
 
 class Feature_discovered_nodeproperties_sliding(Feature):
@@ -110,13 +112,14 @@ class Feature_discovered_nodeproperties_sliding(Feature):
         super().__init__(p, [2] * p.property_count)
 
     def get(self, a: StateAugmentation, node) -> ndarray:
-        node_prop = np.array(a.observation['discovered_nodes_properties'])
+        n = a.observation['discovered_node_count']
+        node_prop = np.array(a.observation['discovered_nodes_properties'])[:n]
 
         # keep last window of entries
         node_prop_window = node_prop[-self.window_size:, :]
 
-        # Remap to get rid of unknown value 0: 1 -> 1, and -1 -> 0 (and 0-> 0)
-        node_prop_window_remapped = np.int32((1 + node_prop_window) / 2)
+        # Remap to get rid of the unknown value (2)
+        node_prop_window_remapped = np.int32(node_prop_window % 2)
 
         countby = np.sum(node_prop_window_remapped, axis=0)
 
@@ -131,9 +134,11 @@ class Feature_discovered_ports(Feature):
         super().__init__(p, [2] * p.port_count)
 
     def get(self, a: StateAugmentation, node):
-        ccm = a.observation['credential_cache_matrix']
+        n = a.observation['credential_cache_length']
         known_credports = np.zeros(self.env_properties.port_count, dtype=np.int32)
-        known_credports[np.int32(ccm[:, 1])] = 1
+        if n > 0:
+            ccm = np.array(a.observation['credential_cache_matrix'])[:n]
+            known_credports[np.int32(ccm[:, 1])] = 1
         return known_credports
 
 
@@ -145,9 +150,11 @@ class Feature_discovered_ports_sliding(Feature):
         super().__init__(p, [2] * p.port_count)
 
     def get(self, a: StateAugmentation, node):
-        ccm = a.observation['credential_cache_matrix']
         known_credports = np.zeros(self.env_properties.port_count, dtype=np.int32)
-        known_credports[np.int32(ccm[-self.window_size:, 1])] = 1
+        n = a.observation['credential_cache_length']
+        if n > 0:
+            ccm = np.array(a.observation['credential_cache_matrix'])[:n]
+            known_credports[np.int32(ccm[-self.window_size:, 1])] = 1
         return known_credports
 
 
@@ -158,8 +165,13 @@ class Feature_discovered_ports_counts(Feature):
         super().__init__(p, [p.maximum_total_credentials + 1] * p.port_count)
 
     def get(self, a: StateAugmentation, node):
-        ccm = a.observation['credential_cache_matrix']
-        return np.bincount(np.int32(ccm[:, 1]), minlength=self.env_properties.port_count)
+        n = a.observation['credential_cache_length']
+        if n > 0:
+            ccm = np.array(a.observation['credential_cache_matrix'])[:n]
+            ports = np.int32(ccm[:, 1])
+        else:
+            ports = np.zeros(0)
+        return np.bincount(ports, minlength=self.env_properties.port_count)
 
 
 class Feature_discovered_credential_count(Feature):
@@ -169,7 +181,8 @@ class Feature_discovered_credential_count(Feature):
         super().__init__(p, [p.maximum_total_credentials + 1])
 
     def get(self, a: StateAugmentation, node):
-        return [len(a.observation['credential_cache_matrix'])]
+        n = a.observation['credential_cache_length']
+        return [n]
 
 
 class Feature_discovered_node_count(Feature):
@@ -179,7 +192,7 @@ class Feature_discovered_node_count(Feature):
         super().__init__(p, [p.maximum_node_count + 1])
 
     def get(self, a: StateAugmentation, node):
-        return [len(a.observation['discovered_nodes_properties'])]
+        return [a.observation['discovered_node_count']]
 
 
 class Feature_discovered_notowned_node_count(Feature):
@@ -190,10 +203,10 @@ class Feature_discovered_notowned_node_count(Feature):
         super().__init__(p, [self.clip + 1])
 
     def get(self, a: StateAugmentation, node):
-        node_props = a.observation['discovered_nodes_properties']
-        discovered = len(node_props)
+        discovered = a.observation['discovered_node_count']
+        node_props = np.array(a.observation['discovered_nodes_properties'][:discovered])
         # here we assume that a node is owned just if all its properties are known
-        owned = np.count_nonzero(np.all(node_props != 0, axis=1))
+        owned = np.count_nonzero(np.all(node_props != 2, axis=1))
         diff = discovered - owned
         return [min(diff, self.clip)]
 
@@ -301,7 +314,7 @@ class RavelEncoding(FeatureEncoder):
     def __init__(self, p: EnvironmentBounds, feature_selection: List[Feature]):
         self.feature_selection = feature_selection
         self.dim_sizes = np.concatenate([f.nvec for f in feature_selection])
-        self.ravelled_size: int = np.prod(self.dim_sizes)
+        self.ravelled_size: np.int64 = np.prod(self.dim_sizes)
         assert np.shape(self.ravelled_size) == (), f'! {np.shape(self.ravelled_size)}'
         super().__init__(p, [self.ravelled_size])
 
@@ -309,13 +322,13 @@ class RavelEncoding(FeatureEncoder):
         assert len(self.dim_sizes) == len(feature_vector), \
             f'feature vector of size {len(feature_vector)}, ' \
             f'expecting {len(self.dim_sizes)}: {feature_vector} -- {self.dim_sizes}'
-        index: np.int32 = np.ravel_multi_index(feature_vector, self.dim_sizes)
+        index: np.int32 = np.ravel_multi_index(list(feature_vector), list(self.dim_sizes))
         assert index < self.ravelled_size, \
             f'feature vector out of bound ({feature_vector}, dim={self.dim_sizes}) ' \
             f'-> index={index}, max_index={self.ravelled_size-1})'
         return index
 
-    def unravel_index(self, index) -> np.ndarray:
+    def unravel_index(self, index) -> Tuple:
         return np.unravel_index(index, self.dim_sizes)
 
     def pretty_print(self, index):
@@ -355,7 +368,7 @@ class AbstractAction(Feature):
 
         abstract_action_index_int = int(abstract_action_index)
 
-        node_prop = np.array(observation['discovered_nodes_properties'])
+        discovered_nodes_count = observation['discovered_node_count']
 
         if abstract_action_index_int < self.n_local_actions:
             vuln = abstract_action_index_int
@@ -364,8 +377,6 @@ class AbstractAction(Feature):
         abstract_action_index_int -= self.n_local_actions
         if abstract_action_index_int < self.n_remote_actions:
             vuln = abstract_action_index_int
-
-            discovered_nodes_count = len(node_prop)
 
             if discovered_nodes_count <= 1:
                 return None
@@ -382,11 +393,11 @@ class AbstractAction(Feature):
         abstract_action_index_int -= self.n_remote_actions
         port = np.int32(abstract_action_index_int)
 
-        discovered_credentials = np.array(observation['credential_cache_matrix'])
-        n_discovered_creds = len(discovered_credentials)
+        n_discovered_creds = observation['credential_cache_length']
         if n_discovered_creds <= 0:
             # no credential available in the cache: cannot poduce a valid connect action
             return None
+        discovered_credentials = np.array(observation['credential_cache_matrix'])[:n_discovered_creds]
 
         nodes_not_owned = discovered_nodes_notowned(observation)
 

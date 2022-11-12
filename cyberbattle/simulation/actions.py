@@ -11,15 +11,15 @@
 from dataclasses import dataclass
 import dataclasses
 from datetime import time
-import boolean
+from boolean import boolean
 from collections import OrderedDict
 import logging
 from enum import Enum
 from typing import Iterator, List, NamedTuple, Optional, Set, Tuple, Dict, TypedDict, cast
-import IPython.core.display as d
+from IPython.display import display
 import pandas as pd
 
-from cyberbattle.simulation.model import MachineStatus, PrivilegeLevel, PropertyName, VulnerabilityID, VulnerabilityType
+from cyberbattle.simulation.model import FirewallRule, MachineStatus, PrivilegeLevel, PropertyName, VulnerabilityID, VulnerabilityType
 from . import model
 
 
@@ -52,11 +52,15 @@ class Penalty:
     # penalty for attempting a connection with an invalid password
     WRONG_PASSWORD = -10
 
-    # traffice blocked by outoing rule in a local firewall
+    # traffic blocked by outoing rule in a local firewall
     BLOCKED_BY_LOCAL_FIREWALL = -10
 
-    # traffice blocked by incoming rule in a remote firewall
+    # traffic blocked by incoming rule in a remote firewall
     BLOCKED_BY_REMOTE_FIREWALL = -10
+
+    # invalid action (e.g., running an attack from a node that's not owned)
+    # (Used only if `throws_on_invalid_actions` is set to False)
+    INVALID_ACTION = -1
 
 
 # Reward for the first time a local or remote attack
@@ -96,8 +100,8 @@ class NodeTrackingInformation:
     # Map (vulnid, local_or_remote) to time of last attack.
     # local_or_remote is true for local, false for remote
     last_attack: Dict[Tuple[model.VulnerabilityID, bool], time] = dataclasses.field(default_factory=dict)
-    # Last time another node connected to this node
-    last_connection: Optional[time] = None
+    # Last time the node got owned by the attacker agent
+    last_owned_at: Optional[time] = None
     # All node properties discovered so far
     discovered_properties: Set[int] = dataclasses.field(default_factory=set)
 
@@ -107,13 +111,19 @@ class AgentActions:
         This is the AgentActions class. It interacts with and makes changes to the environment.
     """
 
-    def __init__(self, environment: model.Environment):
+    def __init__(self, environment: model.Environment, throws_on_invalid_actions=True):
         """
             AgentActions Constructor
+
+        environment               - CyberBattleSim environment parameters
+        throws_on_invalid_actions - whether to raise an exception when executing an invalid action (e.g., running an attack from a node that's not owned)
+                                    if set to False a negative reward is returned instead.
+
         """
         self._environment = environment
         self._gathered_credentials: Set[model.CredentialID] = set()
         self._discovered_nodes: "OrderedDict[model.NodeID, NodeTrackingInformation]" = OrderedDict()
+        self._throws_on_invalid_actions = throws_on_invalid_actions
 
         # List of all special tags indicating a privilege level reached on a node
         self.privilege_tags = [model.PrivilegeEscalation(p).tag for p in list(PrivilegeLevel)]
@@ -190,12 +200,12 @@ class AgentActions:
     def get_discovered_properties(self, node_id: model.NodeID) -> Set[int]:
         return self._discovered_nodes[node_id].discovered_properties
 
-    def __mark_node_as_discovered(self, node_id: model.NodeID) -> None:
+    def __mark_node_as_discovered(self, node_id: model.NodeID) -> bool:
         logger.info('discovered node: ' + node_id)
         newly_discovered = node_id not in self._discovered_nodes
         if newly_discovered:
             self._discovered_nodes[node_id] = NodeTrackingInformation()
-        newly_discovered
+        return newly_discovered
 
     def __mark_nodeproperties_as_discovered(self, node_id: model.NodeID, properties: List[PropertyName]):
         properties_indices = [self._environment.identifiers.properties.index(p)
@@ -218,15 +228,26 @@ class AgentActions:
 
     def __mark_node_as_owned(self,
                              node_id: model.NodeID,
-                             privilege: PrivilegeLevel = model.PrivilegeLevel.LocalUser) -> None:
-        if node_id not in self._discovered_nodes:
-            self._discovered_nodes[node_id] = NodeTrackingInformation()
+                             privilege: PrivilegeLevel = model.PrivilegeLevel.LocalUser) -> Tuple[Optional[time], bool]:
+        """Mark a node as owned.
+        Return the time it was previously own (or None) and whether it was already owned."""
         node_info = self._environment.get_node(node_id)
-        node_info.agent_installed = True
-        node_info.privilege_level = model.escalate(node_info.privilege_level, privilege)
-        self._environment.network.nodes[node_id].update({'data': node_info})
 
-        self.__mark_allnodeproperties_as_discovered(node_id)
+        last_owned_at, is_currently_owned = self.__is_node_owned_history(node_id, node_info)
+
+        if not is_currently_owned:
+            if node_id not in self._discovered_nodes:
+                self._discovered_nodes[node_id] = NodeTrackingInformation()
+            node_info.agent_installed = True
+            node_info.privilege_level = model.escalate(node_info.privilege_level, privilege)
+            self._environment.network.nodes[node_id].update({'data': node_info})
+
+            self.__mark_allnodeproperties_as_discovered(node_id)
+
+            # Record that the node just got owned at the current time
+            self._discovered_nodes[node_id].last_owned_at = time()
+
+        return last_owned_at, is_currently_owned
 
     def __mark_discovered_entities(self, reference_node: model.NodeID, outcome: model.VulnerabilityOutcome) -> Tuple[int, float, int]:
         """Mark discovered entities as such and return
@@ -320,9 +341,18 @@ class AgentActions:
             if outcome.tag in node_info.properties:
                 return False, ActionResult(reward=Penalty.REPEAT, outcome=outcome)
 
-            self.__mark_node_as_owned(node_id, outcome.level)
+            last_owned_at, is_currently_owned = self.__mark_node_as_owned(node_id, outcome.level)
+
+            if not last_owned_at:
+                reward += float(node_info.value)
 
             node_info.properties.append(outcome.tag)
+
+        elif isinstance(outcome, model.LateralMove):
+            last_owned_at, is_currently_owned = self.__mark_node_as_owned(node_id)
+
+            if not last_owned_at:
+                reward += float(node_info.value)
 
         elif isinstance(outcome, model.ProbeSucceeded):
             for p in outcome.discovered_properties:
@@ -350,7 +380,8 @@ class AgentActions:
 
         newly_discovered_nodes, discovered_nodes_value, newly_discovered_credentials = self.__mark_discovered_entities(node_id, outcome)
 
-        reward += discovered_nodes_value
+        # Note: `discovered_nodes_value` should not be added to the reward
+        # unless the discovered nodes got owned, but this case is already covered above
         reward += newly_discovered_nodes * NODE_DISCOVERED_REWARD
         reward += newly_discovered_credentials * CREDENTIAL_DISCOVERED_REWARD
 
@@ -378,10 +409,16 @@ class AgentActions:
         target_node_info: model.NodeInfo = self._environment.get_node(target_node_id)
 
         if not source_node_info.agent_installed:
-            raise ValueError("Agent does not owned the source node '" + node_id + "'")
+            if self._throws_on_invalid_actions:
+                raise ValueError("Agent does not owned the source node '" + node_id + "'")
+            else:
+                return ActionResult(reward=Penalty.INVALID_ACTION, outcome=None)
 
         if target_node_id not in self._discovered_nodes:
-            raise ValueError("Agent has not discovered the target node '" + target_node_id + "'")
+            if self._throws_on_invalid_actions:
+                raise ValueError("Agent has not discovered the target node '" + target_node_id + "'")
+            else:
+                return ActionResult(reward=Penalty.INVALID_ACTION, outcome=None)
 
         succeeded, result = self.__process_outcome(
             model.VulnerabilityType.REMOTE,
@@ -415,7 +452,10 @@ class AgentActions:
         node_info = self._environment.get_node(node_id)
 
         if not node_info.agent_installed:
-            raise ValueError(f"Agent does not owned the node '{node_id}'")
+            if self._throws_on_invalid_actions:
+                raise ValueError(f"Agent does not owned the node '{node_id}'")
+            else:
+                return ActionResult(reward=Penalty.INVALID_ACTION, outcome=None)
 
         succeeded, result = self.__process_outcome(
             model.VulnerabilityType.LOCAL,
@@ -423,7 +463,7 @@ class AgentActions:
             node_id, node_info,
             local_or_remote=True,
             failed_penalty=Penalty.LOCAL_EXPLOIT_FAILED,
-            throw_if_vulnerability_not_present=True)
+            throw_if_vulnerability_not_present=False)
 
         return result
 
@@ -439,6 +479,14 @@ class AgentActions:
 
         logger.debug(f"BLOCKED TRAFFIC - PORT '{port_name}' - Reason: no rule defined for this port.")
         return False
+
+    def __is_node_owned_history(self, target_node_id, target_node_data):
+        """ Returns the last time the node got owned and whether it is still currently owned."""
+        last_previously_owned_at = self._discovered_nodes[target_node_id].last_owned_at if target_node_id in self._discovered_nodes else None
+
+        is_currently_owned = last_previously_owned_at is not None and \
+            (target_node_data.last_reimaging is None or last_previously_owned_at >= target_node_data.last_reimaging)
+        return last_previously_owned_at, is_currently_owned
 
     def connect_to_remote_machine(
             self,
@@ -463,13 +511,22 @@ class AgentActions:
         # and that the target node is discovered
 
         if not source_node.agent_installed:
-            raise ValueError(f"Agent does not owned the source node '{source_node_id}'")
+            if self._throws_on_invalid_actions:
+                raise ValueError(f"Agent does not owned the source node '{source_node_id}'")
+            else:
+                return ActionResult(reward=Penalty.INVALID_ACTION, outcome=None)
 
         if target_node_id not in self._discovered_nodes:
-            raise ValueError(f"Agent has not discovered the target node '{target_node_id}'")
+            if self._throws_on_invalid_actions:
+                raise ValueError(f"Agent has not discovered the target node '{target_node_id}'")
+            else:
+                return ActionResult(reward=Penalty.INVALID_ACTION, outcome=None)
 
         if credential not in self._gathered_credentials:
-            raise ValueError(f"Agent has not discovered credential '{credential}'")
+            if self._throws_on_invalid_actions:
+                raise ValueError(f"Agent has not discovered credential '{credential}'")
+            else:
+                return ActionResult(reward=Penalty.INVALID_ACTION, outcome=None)
 
         if not self.__is_passing_firewall_rules(source_node.firewall.outgoing, port_name):
             logger.info(f"BLOCKED TRAFFIC: source node '{source_node_id}'" +
@@ -502,30 +559,22 @@ class AgentActions:
                 return ActionResult(reward=Penalty.WRONG_PASSWORD,
                                     outcome=None)
 
-            is_already_owned = target_node_data.agent_installed
+            last_owned_at, is_already_owned = self.__mark_node_as_owned(target_node_id)
+
             if is_already_owned:
-                return ActionResult(reward=Penalty.REPEAT,
-                                    outcome=model.LateralMove())
+                return ActionResult(reward=Penalty.REPEAT, outcome=model.LateralMove())
 
             if target_node_id not in self._discovered_nodes:
                 self._discovered_nodes[target_node_id] = NodeTrackingInformation()
 
-            was_previously_owned_at = self._discovered_nodes[target_node_id].last_connection
-            self._discovered_nodes[target_node_id].last_connection = time()
-
-            if was_previously_owned_at is not None and \
-                target_node_data.last_reimaging is not None and \
-                    was_previously_owned_at >= target_node_data.last_reimaging:
-                return ActionResult(reward=Penalty.REPEAT, outcome=model.LateralMove())
-
             self.__annotate_edge(source_node_id, target_node_id, EdgeAnnotation.LATERAL_MOVE)
-            self.__mark_node_as_owned(target_node_id)
+
             logger.info(f"Infected node '{target_node_id}' from '{source_node_id}'" +
                         f" via {port_name} with credential '{credential}'")
             if target_node.owned_string:
                 logger.info("Owned message: " + target_node.owned_string)
 
-            return ActionResult(reward=float(target_node_data.value) if was_previously_owned_at is None else 0.0,
+            return ActionResult(reward=float(target_node_data.value) if last_owned_at is None else 0.0,
                                 outcome=model.LateralMove())
 
     def _check_service_running_and_authorized(self,
@@ -586,7 +635,7 @@ class AgentActions:
 
     def print_all_attacks(self) -> None:
         """Pretty print list of all possible attacks from all the nodes currently owned by the attacker"""
-        d.display(pd.DataFrame.from_dict(self.list_all_attacks()))  # type: ignore
+        display(pd.DataFrame.from_dict(self.list_all_attacks()).set_index('id'))  # type: ignore
 
 
 class DefenderAgentActions:
@@ -654,21 +703,29 @@ class DefenderAgentActions:
             network_node_availability += adjusted_node_availability * node_info.sla_weight
 
         self.__network_availability = network_node_availability / total_node_weights
-        assert(self.__network_availability <= 1.0 and self.__network_availability >= 0.0)
+        assert (self.__network_availability <= 1.0 and self.__network_availability >= 0.0)
 
     def override_firewall_rule(self, node_id: model.NodeID, port_name: model.PortName, incoming: bool, permission: model.RulePermission):
         node_data = self._environment.get_node(node_id)
-        rules = node_data.firewall.incoming if incoming else node_data.firewall.outgoing
-        matching_rules = [r for r in rules if r.port == port_name]
-        if matching_rules:
-            for r in matching_rules:
-                r.permission = permission
+
+        def add_or_patch_rule(rules) -> List[FirewallRule]:
+            new_rules = []
+            has_matching_rule = False
+            for r in rules:
+                if r.port == port_name:
+                    has_matching_rule = True
+                    new_rules.append(FirewallRule(r.port, permission))
+                else:
+                    new_rules.append(r)
+
+            if not has_matching_rule:
+                new_rules.append(model.FirewallRule(port_name, permission))
+            return new_rules
+
+        if incoming:
+            node_data.firewall.incoming = add_or_patch_rule(node_data.firewall.incoming)
         else:
-            new_rule = model.FirewallRule(port_name, permission)
-            if incoming:
-                node_data.firewall.incoming = [new_rule] + node_data.firewall.incoming
-            else:
-                node_data.firewall.outgoing = [new_rule] + node_data.firewall.outgoing
+            node_data.firewall.outgoing = add_or_patch_rule(node_data.firewall.outgoing)
 
     def block_traffic(self, node_id: model.NodeID, port_name: model.PortName, incoming: bool):
         return self.override_firewall_rule(node_id, port_name, incoming, permission=model.RulePermission.BLOCK)

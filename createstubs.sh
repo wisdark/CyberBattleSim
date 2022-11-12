@@ -18,6 +18,15 @@ createstub() {
         echo stub $name already created
     fi
 }
+param=$1
+if [[ $param == "--recreate" ]]; then
+    echo 'Deleting typing directory'
+    rm -Rf typings/
+fi
+
+echo 'Creating stubs'
+
+mkdir -p typings/
 
 createstub pandas
 createstub plotly
@@ -26,34 +35,24 @@ createstub pytest
 createstub setuptools
 createstub ordered_set
 createstub asciichartpy
+createstub networkx
+createstub boolean
+createstub IPython
+
 
 if [ ! -d "typings/gym" ]; then
     pyright --createstub gym
     # Patch gym stubs
     echo '    spaces = ...' >> typings/gym/spaces/dict.pyi
     echo '    nvec = ...' >> typings/gym/spaces/space.pyi
+    echo '    spaces = ...' >> typings/gym/spaces/space.pyi
+    echo '    spaces = ...' >> typings/gym/spaces/tuple.pyi
+    echo '    n = ...' >> typings/gym/spaces/multi_binary.pyi
 else
     echo stub gym already created
 fi
 
-if [ ! -d "typings/IPython" ]; then
-    pyright --createstub IPython.core.display
-else
-    echo stub 'IPython' already created
-fi
-
-if [ ! -d "boolean" ]; then
-    pyright --createstub boolean
-    sed -i '/class BooleanAlgebra(object):/a\    TRUE = ...\n    FALSE = ...' typings/boolean/boolean.pyi
-else
-    echo stub 'boolean' already created
-fi
 
 echo 'Typing stub generation completed'
-
-# Stubs that needed manual patching and that
-# were instead checked-in in git
-#   pyright --createstub boolean
-#   pyright --createstub gym
 
 popd

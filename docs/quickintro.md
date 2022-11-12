@@ -3,8 +3,8 @@
 ## What is it?
 
 A high-level parameterizable model of enterprise networks that simulates the execution of attack and defense cyber-agent.
-A network topology and set of pre-defined vulneraiblities defines the arena on which the simulation is played.
-The attacker evolves in the network via lateral movements by exploiting existing vulneratiblities.
+A network topology and set of pre-defined vulnerabilities defines the arena on which the simulation is played.
+The attacker evolves in the network via lateral movements by exploiting existing vulnerabilities.
 The defender attempts to contain the attacker and evict it from the nework.
 CyberBattleSim offers an OpenAI Gym interface to its simulation to facilitate experimentation with Reinforcement Learning algorithms.
 
@@ -174,7 +174,7 @@ plot()
 c2.connect_and_infect('client', 'Website', 'SSH', 'ReusedMySqlCred-web')
 plot()
 ```
-The plot function displays the subset of the network explorsed so far. After a few attempts the explored network should looks like this:
+The plot function displays the subset of the network explorsed so far. After a few attempts the explored network should look like this:
 
    ![image.png](.attachments/image-4fd79f98-36b2-45ae-82e4-2631aacda090.png)
 
