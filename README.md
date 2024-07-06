@@ -72,20 +72,40 @@ Start by checking out the repository:
    git clone https://github.com/microsoft/CyberBattleSim.git
    ```
 
-### On Linux or WSL
+### OS components
 
-The instructions were tested on a Linux Ubuntu distribution (both native and via WSL). Run the following command to set-up your dev environment and install all the required dependencies (apt and pip packages):
-
-```bash
-./init.sh
+If you get the following error when running the papermill on the notebooks
+(or alternatively when running `orca --help`)
+```
+/home/wiblum/miniconda3/envs/cybersim/lib/orca_app/orca: error while loading shared libraries: libXss.so.1: cannot open shared object file: No such file or directory
+```
+or other share libraries like `libgdk_pixbuf-2.0.so.0`,
+Then run the following command:
+```
+sudo apt install libnss3-dev libgtk-3-0 libxss1 libasound2-dev libgtk2.0-0 libgconf-2-4
 ```
 
-The script installs python3.9 if not present. If you are running a version of Ubuntu older than 20, it will automatically add an additional apt repository to install python3.9.
+### On Linux or WSL
 
-The script will create a [virtual Python environment](https://docs.python.org/3/library/venv.html) under a `venv` subdirectory, you can then
-run Python with `venv/bin/python`.
+The instructions were tested on a Linux Ubuntu distribution (both native and via WSL).
 
-> Note: If you prefer Python from a global installation instead of a virtual environment then you can skip the creation of the virtual environment by running the script with `./init.sh -n`. This will instead install all the Python packages on a system-wide installation of Python 3.9.
+If conda is not installed already, you need to install it by running the `install_conda.sh` script.
+
+```bash
+bash install-conda.sh
+```
+
+Once this is done, open a new terminal and run the initialization script:
+```bash
+bash init.sh
+```
+This will create a conda environmen named `cybersim` with all the required OS and python dependencies.
+
+To activate the environment run:
+
+```bash
+conda activate cybersim
+```
 
 #### Windows Subsystem for Linux
 
@@ -147,9 +167,9 @@ docker run -it -v "$(pwd)":/source --rm cyberbattle:1.1 python -m cyberbattle.ag
 Run the following commands to run a simulation with a baseline RL agent:
 
 ```bash
-python cyberbattle/agents/baseline/run.py --training_episode_count 5 --eval_episode_count 3 --iteration_count 100 --rewardplot_width 80  --chain_size=4 --ownership_goal 0.2
+python -m cyberbattle.agents.baseline.run --training_episode_count 5 --eval_episode_count 3 --iteration_count 100 --rewardplot_width 80  --chain_size=4 --ownership_goal 0.2
 
-python cyberbattle/agents/baseline/run.py --training_episode_count 5 --eval_episode_count 3 --iteration_count 100 --rewardplot_width 80  --chain_size=4 --reward_goal 50 --ownership_goal 0
+python -m cyberbattle.agents.baseline.run --training_episode_count 5 --eval_episode_count 3 --iteration_count 100 --rewardplot_width 80  --chain_size=4 --reward_goal 50 --ownership_goal 0
 ```
 
 If everything is setup correctly you should get an output that looks like this:
@@ -186,8 +206,15 @@ Cumulative rewards -- DQN=Red, Random=Green
 ## Jupyter notebooks
 
 To quickly get familiar with the project, you can open one of the provided Jupyter notebooks to play interactively with
-the gym environments. Just start jupyter with `jupyter notebook`, or
-`venv/bin/jupyter notebook` if you are using a virtual environment setup.
+the gym environments. At the root of the repository run the following command and then open the notebook in the `notebooks` folder
+from the Jupyter interface:
+
+```python
+export PYTHONPATH=$(pwd)
+jupyter lab
+```
+
+Some notebooks to get started:
 
 - 'Capture The Flag' toy environment notebooks:
   - [Random agent](notebooks/toyctf-random.ipynb)
