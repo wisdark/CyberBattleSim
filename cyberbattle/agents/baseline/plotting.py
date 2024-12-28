@@ -32,9 +32,7 @@ def plot_episodes_rewards_averaged(results):
     """Plot cumulative rewards for a given set of specified episodes"""
     max_iteration_count = np.max([len(r) for r in results["all_episodes_rewards"]])
 
-    all_episodes_rewards_padded = [
-        pad(rewards, max_iteration_count) for rewards in results["all_episodes_rewards"]
-    ]
+    all_episodes_rewards_padded = [pad(rewards, max_iteration_count) for rewards in results["all_episodes_rewards"]]
     cumrewards = np.cumsum(all_episodes_rewards_padded, axis=1)
     avg = np.average(cumrewards, axis=0)
     std = np.std(cumrewards, axis=0)
@@ -56,9 +54,7 @@ def plot_episodes_availability_averaged(results):
     data = results["all_episodes_availability"]
     longest_episode_length = np.max([len(r) for r in data])
 
-    all_episodes_padded = [
-        fill_with_latest_value(av, longest_episode_length) for av in data
-    ]
+    all_episodes_padded = [fill_with_latest_value(av, longest_episode_length) for av in data]
     avg = np.average(all_episodes_padded, axis=0)
     std = np.std(all_episodes_padded, axis=0)
     x = [i for i in range(len(std))]
@@ -100,12 +96,14 @@ def plot_all_episodes(r):
     plt.show()
 
 
-def plot_averaged_cummulative_rewards(title, all_runs, show=True):
+def plot_averaged_cummulative_rewards(title, all_runs, show=True, save_at=None):
     """Plot averaged cumulative rewards"""
     new_plot(title)
     for r in all_runs:
         plot_episodes_rewards_averaged(r)
     plt.legend(loc="lower right")
+    if save_at:
+        plt.savefig(save_at)
     if show:
         plt.show()
 
@@ -141,7 +139,7 @@ def plot_all_episodes_loss(all_episodes_losses, name, label):
     plt.plot(x, all_episodes_losses, label=f"{name} {label}")
 
 
-def running_mean(x, size):
+def running_mean(x: np.ndarray, size):
     """return moving average of x for a window of lenght 'size'"""
     cumsum = np.cumsum(np.insert(x, 0, 0))
     return np.subtract(cumsum[size:], cumsum[:-size]) / float(size)
@@ -199,9 +197,7 @@ def reduce(x, desired_width):
 def episodes_rewards_averaged(run):
     """Plot cumulative rewards for a given set of specified episodes"""
     max_iteration_count = np.max([len(r) for r in run["all_episodes_rewards"]])
-    all_episodes_rewards_padded = [
-        pad(rewards, max_iteration_count) for rewards in run["all_episodes_rewards"]
-    ]
+    all_episodes_rewards_padded = [pad(rewards, max_iteration_count) for rewards in run["all_episodes_rewards"]]
     cumrewards = np.cumsum(all_episodes_rewards_padded, axis=1)
     avg = np.average(cumrewards, axis=0)
     return list(avg)

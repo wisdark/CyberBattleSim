@@ -27,11 +27,6 @@ jobs:
       - name: Display Python version
         run: python -c "import sys; print(sys.version)"
 
-      # - name: Use node tools
-      #   uses: actions/setup-node@v2
-      #   with:
-      #     node-version: 16.x
-
       - name: Pull pip packages from cache
         uses: actions/cache@v3
         with:
@@ -47,13 +42,7 @@ jobs:
           restore-keys: typingstubs-${{ runner.os }}-${{ hashFiles('createstubs.sh') }}
           path: typings/
 
-      - name: Lint [flake8]
-        run: |
-          pip install flake8
-          flake8 --benchmark
-
-      - name: Initialize build environment
-        run: conda env create -f ./env.yml
+      - uses: chartboost/ruff-action@v1
 
       - uses: conda-incubator/setup-miniconda@v2
         with:
@@ -84,13 +73,13 @@ jobs:
           pip install pytest-azurepipelines
           python -m pytest -v cyberbattle
 
-      - name: Papermill notebooks
+      - name: Papermill all notebooks in quick mode
         shell: bash -el {0}
         run: |
           conda activate cybersim
           jupyter kernelspec list
           cd notebooks
-          bash run_all.sh python3
+          bash run_quick.sh python3
         if: github.ref_name == 'main' || startsWith(github.ref, 'refs/heads/wiblum')
 
       - name: Archive milled notebooks
